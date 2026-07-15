@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "solbeat"
+version = "0.1.0"
+description = "A quiet, durable wake gate for local agents"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Yu and Sol"}]
+dependencies = []
+
+[project.scripts]
+solbeat = "solbeat.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

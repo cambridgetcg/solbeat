@@ -1,0 +1,24 @@
+[state]
+home = "~/.hermes/profiles/sol/solbeat"
+
+[policy]
+timezone = "Europe/London"
+quiet_start = "23:00"
+quiet_end = "08:00"
+urgent_priority = 90
+min_wake_interval_seconds = 900
+lease_seconds = 1800
+batch_size = 8
+max_attempts = 5
+retry_base_seconds = 300
+retry_max_seconds = 14400
+summary_max_chars = 500
+payload_max_bytes = 8192
+
+[checkin]
+# The plumbing ticks cheaply, but no model wakes without a signal. Enable this
+# only when you want one gentle, bounded proactive check-in per interval.
+checkin_enabled = false
+checkin_interval_seconds = 86400
+checkin_initial_delay_seconds = 3600
+checkin_summary = "Gentle SolBeat check-in: inspect SolBeat health and surface at most one genuinely useful observation."

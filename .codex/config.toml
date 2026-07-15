@@ -1,0 +1,15 @@
+# This repository is the only writable project root for unattended turns.
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+allow_login_shell = false
+model_reasoning_effort = "medium"
+web_search = "disabled"
+
+[sandbox_workspace_write]
+writable_roots = ["/Users/yu/.hermes/profiles/sol/solbeat"]
+network_access = false
+exclude_tmpdir_env_var = false
+exclude_slash_tmp = false
+
+[mcp_servers.openaiDeveloperDocs]
+enabled = false
