@@ -84,10 +84,18 @@ The project-local Codex policy in [`.codex/config.toml`](.codex/config.toml) for
 Pairing is deliberately human-only because its QR code and phone identifiers are credentials/account data. After the isolated profile and safe bridge port have been prepared, run this yourself in a private terminal:
 
 ```bash
-hermes --profile sol whatsapp
+sol whatsapp
 ```
 
-Use WhatsApp → Settings → Linked Devices → Link a Device. Choose a dedicated bot number and an explicit allowlist. Do not paste the QR, number, home-channel identifier, or bridge logs into an agent chat. Proactive delivery also requires a private `WHATSAPP_HOME_CHANNEL` value after pairing.
+Use WhatsApp → Settings → Linked Devices → Link a Device. Choose a dedicated bot number and enter an explicit allowlist in the private wizard; do not choose `*`. The wizard only enables WhatsApp after a pairing credential actually exists.
+
+After pairing:
+
+1. Run `sol gateway restart` in the private terminal.
+2. Message the bot from the intended private chat and send `/sethome`.
+3. Wait for the gateway's success reply, then tell the local operator that pairing and `/sethome` are complete.
+
+`/sethome` records the chat locally, so no phone number or home-channel identifier needs to be pasted into an agent chat. Keep the QR, numbers, identifiers, and bridge logs private. SolBeat delivery remains `local` until the cron job is deliberately switched to `whatsapp`; pairing alone sends no proactive message.
 
 The selected local bridge port is `18742`, not Baileys' default `3000`, because another local service owns port `3000` on this device.
 
