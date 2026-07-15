@@ -69,6 +69,8 @@ bin/solbeat resume
 
 Configuration lives in [`config/solbeat.toml`](config/solbeat.toml). The default state home is `~/.hermes/profiles/sol/solbeat`, with directory mode `0700` and database files mode `0600`.
 
+This device enables one gentle daily pulse, first due about 18 hours after the scheduler begins using the policy. It remains inside quiet-hour and wake-spacing rules, and its prompt explicitly permits `[SILENT]` when there is nothing useful to surface.
+
 ## Hermes and Codex
 
 SolBeat uses a fresh named Hermes profile called `sol`; it does not copy the default profile's sessions or credentials. `install-hermes` writes a physical executable under that profile because Hermes intentionally rejects cron scripts that resolve outside its own `scripts` directory.
