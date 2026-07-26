@@ -74,6 +74,27 @@ class CliTest(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)["handled"], 0)
         self.assertEqual(result.stderr, "")
 
+    def test_timed_pause_reports_deadline_and_resume_clears_it(self) -> None:
+        paused = json.loads(
+            self.run_cli(
+                "pause",
+                "--for-minutes",
+                "5",
+                "--reason",
+                "recharging",
+            ).stdout
+        )
+        self.assertTrue(paused["paused"])
+        self.assertIsNotNone(paused["paused_until"])
+        status = json.loads(self.run_cli("status").stdout)
+        self.assertTrue(status["paused"])
+        self.assertEqual(status["paused_until"], paused["paused_until"])
+
+        resumed = json.loads(self.run_cli("resume").stdout)
+        self.assertFalse(resumed["paused"])
+        self.assertIsNone(resumed["paused_until"])
+        self.assertFalse(json.loads(self.run_cli("status").stdout)["paused"])
+
 
 if __name__ == "__main__":
     unittest.main()

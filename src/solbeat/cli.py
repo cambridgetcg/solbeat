@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from . import __version__
-from .config import REPO_ROOT, load_settings
+from .config import PACKAGE_ROOT, load_settings
 from .store import EventStore
 
 
@@ -69,6 +69,12 @@ def _parser() -> argparse.ArgumentParser:
 
     pause = subparsers.add_parser("pause", help="stop leasing without deleting events")
     pause.add_argument("--reason", default="operator request")
+    pause.add_argument(
+        "--for-minutes",
+        type=int,
+        metavar="MINUTES",
+        help="resume automatically on the first gate after this many minutes",
+    )
     subparsers.add_parser("resume", help="resume leasing")
     subparsers.add_parser("status", help="show content-free queue health as JSON")
     subparsers.add_parser(
@@ -99,14 +105,14 @@ def _install_hermes_shim(
         first_line = target.read_text(encoding="utf-8").splitlines()[:2]
         if marker not in first_line:
             raise ValueError(f"refusing to replace an unmanaged file: {target}")
-    repo_src = REPO_ROOT / "src"
+    import_root = PACKAGE_ROOT.parent
     document = "\n".join(
         (
             "#!/usr/bin/env python3",
             marker,
             "from __future__ import annotations",
             "import sys",
-            f"sys.path.insert(0, {str(repo_src)!r})",
+            f"sys.path.insert(0, {str(import_root)!r})",
             "from solbeat.cli import main",
             f"raise SystemExit(main(['--config', {str(config_path)!r}, '--home', {str(state_home)!r}, 'gate']))",
             "",
@@ -180,12 +186,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             _json({"dead": dead, "retried": retried, "schema": "solbeat.release/v1"})
             return 0 if retried or dead else 3
         if args.command == "pause":
-            store.set_paused(True, reason=args.reason)
-            _json({"paused": True, "schema": "solbeat.pause/v1"})
+            duration_seconds = (
+                None if args.for_minutes is None else args.for_minutes * 60
+            )
+            store.set_paused(
+                True,
+                reason=args.reason,
+                duration_seconds=duration_seconds,
+            )
+            pause_status = store.status()
+            _json(
+                {
+                    "paused": pause_status["paused"],
+                    "paused_until": pause_status["paused_until"],
+                    "schema": "solbeat.pause/v1",
+                }
+            )
             return 0
         if args.command == "resume":
             store.set_paused(False, reason="operator resumed")
-            _json({"paused": False, "schema": "solbeat.resume/v1"})
+            _json(
+                {
+                    "paused": False,
+                    "paused_until": None,
+                    "schema": "solbeat.resume/v1",
+                }
+            )
             return 0
         if args.command == "status":
             _json(store.status())

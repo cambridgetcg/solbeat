@@ -21,6 +21,7 @@ from .security import bounded_payload_json, fingerprint, redact_text
 
 SCHEMA_VERSION = "2"
 _LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$")
+_MAX_TIMED_PAUSE_SECONDS = 365 * 24 * 60 * 60
 
 
 class SchemaVersionError(ValueError):
@@ -57,6 +58,8 @@ def _label(value: str, name: str) -> str:
         "A" <= character <= "Z" or "a" <= character <= "z" for character in value
     ):
         raise ValueError(f"{name} must contain at least one ASCII letter")
+    if redact_text(value, max_chars=64) != value:
+        raise ValueError(f"{name} contains redaction-sensitive text")
     return value
 
 
@@ -288,6 +291,34 @@ class EventStore:
             """,
             (key, value, now),
         )
+
+    @staticmethod
+    def _meta_delete(connection: sqlite3.Connection, key: str) -> None:
+        connection.execute("DELETE FROM meta WHERE key = ?", (key,))
+
+    def _pause_state(
+        self,
+        connection: sqlite3.Connection,
+        now: int,
+        *,
+        clear_expired: bool,
+    ) -> tuple[bool, int | None]:
+        if self._meta_get(connection, "paused") != "1":
+            return False, None
+        raw_until = self._meta_get(connection, "paused_until")
+        if raw_until is None:
+            return True, None
+        try:
+            paused_until = int(raw_until)
+        except ValueError as exc:
+            raise ValueError("invalid paused_until value in state database") from exc
+        if now < paused_until:
+            return True, paused_until
+        if clear_expired:
+            self._meta_set(connection, "paused", "0", now)
+            self._meta_delete(connection, "paused_until")
+            self._meta_set(connection, "pause_note", "timed pause elapsed", now)
+        return False, None
 
     def emit(
         self,
@@ -522,7 +553,10 @@ class EventStore:
         timestamp = int(time_module.time()) if now is None else int(now)
         with self.transaction() as connection:
             self._reclaim_expired(connection, timestamp)
-            if self._meta_get(connection, "paused") == "1":
+            paused, _ = self._pause_state(
+                connection, timestamp, clear_expired=True
+            )
+            if paused:
                 return GateResult(False, "paused")
             self._ensure_checkin(connection, timestamp)
 
@@ -796,8 +830,24 @@ class EventStore:
         return retried, dead
 
     def set_paused(
-        self, paused: bool, *, reason: str = "operator request", now: int | None = None
+        self,
+        paused: bool,
+        *,
+        reason: str = "operator request",
+        duration_seconds: int | None = None,
+        now: int | None = None,
     ) -> None:
+        if duration_seconds is not None:
+            if not paused:
+                raise ValueError("duration_seconds is only valid when pausing")
+            if (
+                not isinstance(duration_seconds, int)
+                or isinstance(duration_seconds, bool)
+                or duration_seconds <= 0
+            ):
+                raise ValueError("duration_seconds must be a positive integer")
+            if duration_seconds > _MAX_TIMED_PAUSE_SECONDS:
+                raise ValueError("timed pause cannot exceed 365 days")
         timestamp = int(time_module.time()) if now is None else int(now)
         with self.transaction() as connection:
             self._meta_set(connection, "paused", "1" if paused else "0", timestamp)
@@ -807,11 +857,23 @@ class EventStore:
                 redact_text(reason, max_chars=240),
                 timestamp,
             )
+            if paused and duration_seconds is not None:
+                self._meta_set(
+                    connection,
+                    "paused_until",
+                    str(timestamp + duration_seconds),
+                    timestamp,
+                )
+            else:
+                self._meta_delete(connection, "paused_until")
 
     def status(self, *, now: int | None = None) -> dict[str, Any]:
         timestamp = int(time_module.time()) if now is None else int(now)
         connection = self.connect()
         try:
+            paused, paused_until = self._pause_state(
+                connection, timestamp, clear_expired=False
+            )
             counts = {
                 str(row["status"]): int(row["count"])
                 for row in connection.execute(
@@ -828,7 +890,10 @@ class EventStore:
             last_wake = self._meta_get(connection, "last_wake_at")
             return {
                 "schema": "solbeat.status/v1",
-                "paused": self._meta_get(connection, "paused") == "1",
+                "paused": paused,
+                "paused_until": None
+                if paused_until is None
+                else _epoch_to_iso(paused_until, self.policy.timezone),
                 "counts": {
                     name: counts.get(name, 0)
                     for name in ("pending", "leased", "done", "dead")

@@ -18,4 +18,6 @@ if [ -n "${PYTHONPATH:-}" ]; then
 else
     export PYTHONPATH="$REPO_ROOT/src"
 fi
-exec python3 -m solbeat "$@"
+
+unset SOLBEAT_CONFIG SOLBEAT_HOME
+exec python3 -m solbeat --config "$REPO_ROOT/config/solbeat.toml" "$@"

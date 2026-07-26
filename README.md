@@ -60,14 +60,33 @@ If work is blocked, release it instead of losing it:
 bin/solbeat release LEASE_ID --reason "short reason"
 ```
 
-Pause and resume are non-destructive:
+Pause and resume are non-destructive. A timed pause makes rest self-releasing:
 
 ```bash
 bin/solbeat pause --reason "resting"
+bin/solbeat pause --for-minutes 30 --reason "recharging"
 bin/solbeat resume
 ```
 
-Configuration lives in [`config/solbeat.toml`](config/solbeat.toml). The default state home is `~/.hermes/profiles/sol/solbeat`, with directory mode `0700` and database files mode `0600`.
+Pause keeps accepting and preserving events but creates no new leases,
+including for urgent events. A timed pause becomes eligible to resume at its
+deadline; the next `gate` clears it and applies the normal quiet-hour and
+wake-spacing rules. It does not stop the scheduler, cancel an existing lease,
+delete queued work, or promise a background action at the exact deadline.
+Timed pauses are bounded at 365 days. `status` reports the effective pause
+state and its deadline without exposing the private reason.
+
+The source-tree wrapper explicitly uses
+[`config/solbeat.toml`](config/solbeat.toml), preserving this device's policy
+and live state under `~/.hermes/profiles/sol/solbeat`. An installed `solbeat`
+command instead uses a neutral package-local default: UTC policy, proactive
+check-ins disabled, and separate state under `~/.local/state/solbeat`. The
+installed command accepts `--config PATH`, `--home PATH`, or their environment
+variables. The specialized source wrapper clears ambient `SOLBEAT_CONFIG` and
+`SOLBEAT_HOME` so shell state cannot silently redirect the live ledger; an
+explicit CLI flag remains a deliberate override. State directories use mode
+`0700` and database files use mode `0600`. Unknown or misplaced TOML keys fail
+fast so a typo cannot silently change the wake policy.
 
 This device enables one gentle daily pulse, first due about 18 hours after the scheduler begins using the policy. It remains inside quiet-hour and wake-spacing rules, and its prompt explicitly permits `[SILENT]` when there is nothing useful to surface.
 
@@ -75,7 +94,11 @@ This device enables one gentle daily pulse, first due about 18 hours after the s
 
 SolBeat uses a fresh named Hermes profile called `sol`; it does not copy the default profile's sessions or credentials. `install-hermes` writes a physical executable under that profile because Hermes intentionally rejects cron scripts that resolve outside its own `scripts` directory.
 
-The generated gate pins its config and state-home paths. If either path changes, rerun `install-hermes` and update the cron prompt before resuming the job; this avoids a gate/ack split across two databases.
+The generated gate pins its config, state-home, and actual package import paths,
+so it does not depend on an ambient `PYTHONPATH` in either a checkout or an
+installed package. If the config, state-home, or package installation path
+changes, rerun `install-hermes` and update the cron prompt before resuming the
+job; this avoids a gate/ack split across two databases or a stale import path.
 
 The project-local Codex policy in [`.codex/config.toml`](.codex/config.toml) forces unattended turns into workspace-write mode, adds only the SolBeat state directory as an extra writable root, disables network access, and never waits for an interactive approval. The cron prompt in [`config/cron-prompt.md`](config/cron-prompt.md) keeps event data separate from instructions and requires an explicit ack or release.
 
@@ -105,6 +128,14 @@ The selected local bridge port is `18742`, not Baileys' default `3000`, because 
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-The test suite covers silent ticks, dedupe, redaction, quiet/urgent policy, rate limiting, concurrent leases, expiry/backoff, dead-letter retention, pause/resume, gentle check-ins, CLI output, and physical Hermes shim installation.
+The test suite covers silent ticks, dedupe, redaction (including event labels),
+strict configuration, quiet/urgent policy, rate limiting, concurrent leases,
+expiry/backoff, dead-letter retention, indefinite and timed pause/resume,
+gentle check-ins, CLI output, package-local defaults, and physical Hermes shim
+installation.
 
-The v0.1 live deployment uses this source-tree wrapper. The `pyproject.toml` metadata supports development tooling, but a relocatable wheel/standalone installation is not yet a compatibility promise.
+The v0.1 live deployment uses the source-tree wrapper and its explicit device
+configuration. Wheel metadata includes the neutral default so an isolated
+installed `solbeat gate` works without the repository checkout; installation
+does not configure Hermes, a scheduler, delivery, or the device-specific daily
+pulse.

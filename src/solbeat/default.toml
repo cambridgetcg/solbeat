@@ -1,0 +1,8 @@
+# Neutral defaults for an installed SolBeat package.
+# The repository wrapper explicitly selects config/solbeat.toml instead.
+
+[policy]
+timezone = "UTC"
+
+[checkin]
+checkin_enabled = false

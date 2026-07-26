@@ -10,9 +10,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG = REPO_ROOT / "config" / "solbeat.toml"
-DEFAULT_HOME = Path("~/.hermes/profiles/sol/solbeat").expanduser()
+PACKAGE_ROOT = Path(__file__).resolve().parent
+DEFAULT_CONFIG = PACKAGE_ROOT / "default.toml"
+DEFAULT_HOME = Path("~/.local/state/solbeat").expanduser()
 
 
 @dataclass(frozen=True)
@@ -140,9 +140,19 @@ def load_settings(
         .resolve()
     )
     document = _read_toml(selected_config)
+    allowed_top_level = {"state", "policy", "checkin"}
+    unknown_top_level = sorted(set(document) - allowed_top_level)
+    if unknown_top_level:
+        raise ValueError(
+            f"unknown top-level configuration keys: {', '.join(unknown_top_level)}"
+        )
+
     state_document = document.get("state", {})
     if not isinstance(state_document, dict):
         raise ValueError("state must be a TOML table")
+    unknown_state = sorted(set(state_document) - {"home"})
+    if unknown_state:
+        raise ValueError(f"unknown [state] keys: {', '.join(unknown_state)}")
     configured_home = state_document.get("home", str(DEFAULT_HOME))
     if not isinstance(configured_home, str):
         raise ValueError("state.home must be a string")
@@ -155,11 +165,18 @@ def load_settings(
     checkin_document = document.get("checkin", {})
     if not isinstance(policy_document, dict) or not isinstance(checkin_document, dict):
         raise ValueError("policy and checkin must be TOML tables")
+
+    policy_fields = set(Policy.__dataclass_fields__)
+    checkin_fields = {name for name in policy_fields if name.startswith("checkin_")}
+    regular_policy_fields = policy_fields - checkin_fields
+    unknown_policy = sorted(set(policy_document) - regular_policy_fields)
+    if unknown_policy:
+        raise ValueError(f"unknown [policy] keys: {', '.join(unknown_policy)}")
+    unknown_checkin = sorted(set(checkin_document) - checkin_fields)
+    if unknown_checkin:
+        raise ValueError(f"unknown [checkin] keys: {', '.join(unknown_checkin)}")
+
     policy_values = policy_document | checkin_document
-    allowed = set(Policy.__dataclass_fields__)
-    unknown = sorted(set(policy_values) - allowed)
-    if unknown:
-        raise ValueError(f"unknown policy keys: {', '.join(unknown)}")
     policy = Policy(**policy_values)
     policy.validate()
     return Settings(

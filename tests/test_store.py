@@ -5,6 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -97,7 +98,7 @@ class EventStoreTest(unittest.TestCase):
             payload={"api_key": raw_secret, "nested": f"Bearer {raw_secret}"},
             now=epoch(12),
         )
-        with sqlite3.connect(self.settings.database) as connection:
+        with closing(sqlite3.connect(self.settings.database)) as connection:
             summary, payload_json = connection.execute(
                 "SELECT summary, payload_json FROM events"
             ).fetchone()
@@ -150,6 +151,27 @@ class EventStoreTest(unittest.TestCase):
                 summary="not accepted",
                 now=epoch(12),
             )
+
+    def test_redaction_sensitive_labels_are_rejected_before_gate(self) -> None:
+        for field, value in (
+            ("source", "sk-synthetic-label-value"),
+            ("kind", "eyJsynthetic.payloadvalue.signature"),
+        ):
+            arguments = {
+                "source": "test",
+                "kind": "signal",
+                "summary": "not accepted",
+                field: value,
+            }
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(
+                    ValueError, f"{field} contains redaction-sensitive text"
+                ):
+                    self.store.emit(**arguments, now=epoch(12))
+        self._emit(now=epoch(12), dedupe="normal-label-control")
+        result = self.store.gate(now=epoch(12))
+        self.assertEqual(result.context["events"][0]["source"], "test")
+        self.assertEqual(result.context["events"][0]["kind"], "signal")
 
     def test_quiet_hours_block_normal_but_not_urgent(self) -> None:
         self._emit(now=epoch(23, 30), dedupe="normal")
@@ -239,7 +261,7 @@ class EventStoreTest(unittest.TestCase):
         retried = self.store.gate(now=epoch(12) + 60)
         self.assertTrue(retried.wake_agent)
         self.assertNotEqual(retried.context["lease_id"], first_lease)
-        with sqlite3.connect(self.settings.database) as connection:
+        with closing(sqlite3.connect(self.settings.database)) as connection:
             attempts = connection.execute("SELECT attempts FROM events").fetchone()[0]
         self.assertEqual(attempts, 2)
 
@@ -285,6 +307,42 @@ class EventStoreTest(unittest.TestCase):
         self.assertEqual(self.store.status(now=epoch(12))["counts"]["pending"], 1)
         self.store.set_paused(False, now=epoch(12) + 1)
         self.assertTrue(self.store.gate(now=epoch(12) + 1).wake_agent)
+
+    def test_timed_pause_resumes_on_first_gate_after_deadline(self) -> None:
+        self._emit(now=epoch(12))
+        self.store.set_paused(
+            True,
+            reason="recharging",
+            duration_seconds=60,
+            now=epoch(12),
+        )
+        before = self.store.status(now=epoch(12) + 59)
+        self.assertTrue(before["paused"])
+        self.assertIsNotNone(before["paused_until"])
+        self.assertEqual(self.store.gate(now=epoch(12) + 59).reason, "paused")
+
+        resumed = self.store.gate(now=epoch(12) + 60)
+        self.assertTrue(resumed.wake_agent)
+        after = self.store.status(now=epoch(12) + 60)
+        self.assertFalse(after["paused"])
+        self.assertIsNone(after["paused_until"])
+
+    def test_manual_resume_clears_timed_pause_deadline(self) -> None:
+        self.store.set_paused(True, duration_seconds=60, now=epoch(12))
+        self.store.set_paused(False, now=epoch(12) + 1)
+        status = self.store.status(now=epoch(12) + 1)
+        self.assertFalse(status["paused"])
+        self.assertIsNone(status["paused_until"])
+
+    def test_timed_pause_duration_is_bounded(self) -> None:
+        for duration in (0, -1, True, 365 * 24 * 60 * 60 + 1):
+            with self.subTest(duration=duration):
+                with self.assertRaises(ValueError):
+                    self.store.set_paused(
+                        True,
+                        duration_seconds=duration,
+                        now=epoch(12),
+                    )
 
     def test_concurrent_gates_create_one_lease(self) -> None:
         self._emit(now=epoch(12))
@@ -342,7 +400,7 @@ class EventStoreTest(unittest.TestCase):
         store.gate(now=1)
         due = store.gate(now=1_000_000_000)
         self.assertTrue(due.wake_agent)
-        with store.connect() as connection:
+        with closing(store.connect()) as connection:
             next_at = int(store._meta_get(connection, "next_checkin_at"))
         self.assertEqual(next_at, 1_000_000_001)
 
@@ -366,13 +424,14 @@ class EventStoreTest(unittest.TestCase):
         self.assertEqual(second.reason, "lease_in_flight")
 
     def test_future_schema_is_refused_without_relabeling(self) -> None:
-        with sqlite3.connect(self.settings.database) as connection:
+        with closing(sqlite3.connect(self.settings.database)) as connection:
             connection.execute(
                 "UPDATE meta SET value = '99' WHERE key = 'schema_version'"
             )
+            connection.commit()
         with self.assertRaises(SchemaVersionError):
             self.store.initialize()
-        with sqlite3.connect(self.settings.database) as connection:
+        with closing(sqlite3.connect(self.settings.database)) as connection:
             version = connection.execute(
                 "SELECT value FROM meta WHERE key = 'schema_version'"
             ).fetchone()[0]
