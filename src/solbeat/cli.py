@@ -105,10 +105,21 @@ def _install_hermes_shim(
         first_line = target.read_text(encoding="utf-8").splitlines()[:2]
         if marker not in first_line:
             raise ValueError(f"refusing to replace an unmanaged file: {target}")
+    interpreter = Path(sys.executable).expanduser().resolve()
+    interpreter_text = str(interpreter)
+    if (
+        not interpreter.is_file()
+        or not os.access(interpreter, os.X_OK)
+        or any(character.isspace() for character in interpreter_text)
+    ):
+        raise ValueError(
+            "current Python interpreter cannot be pinned in a portable shebang: "
+            f"{interpreter}"
+        )
     import_root = PACKAGE_ROOT.parent
     document = "\n".join(
         (
-            "#!/usr/bin/env python3",
+            f"#!{interpreter_text}",
             marker,
             "from __future__ import annotations",
             "import sys",

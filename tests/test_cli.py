@@ -66,6 +66,10 @@ class CliTest(unittest.TestCase):
         self.assertFalse(target.is_symlink())
         self.assertEqual(target.stat().st_mode & 0o077, 0)
         first = target.read_text(encoding="utf-8")
+        shebang = first.splitlines()[0]
+        self.assertTrue(shebang.startswith("#!/"))
+        self.assertNotIn("/usr/bin/env", shebang)
+        self.assertTrue(Path(shebang[2:]).is_file())
         self.run_cli("install-hermes", "--hermes-home", str(hermes_home))
         self.assertEqual(target.read_text(encoding="utf-8"), first)
 

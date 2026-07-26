@@ -87,9 +87,14 @@ class PackagingTest(unittest.TestCase):
         self.assertEqual(installed.returncode, 0, installed.stderr)
         target = Path(json.loads(installed.stdout)["physical_script"])
         self.assertTrue(target.is_file())
+        self.assertEqual(
+            target.read_text(encoding="utf-8").splitlines()[0],
+            f"#!{Path(sys.executable).resolve()}",
+        )
 
         clean_environment = {
             **os.environ,
+            "PATH": "/usr/bin:/bin",
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONNOUSERSITE": "1",
         }

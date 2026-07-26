@@ -94,11 +94,13 @@ This device enables one gentle daily pulse, first due about 18 hours after the s
 
 SolBeat uses a fresh named Hermes profile called `sol`; it does not copy the default profile's sessions or credentials. `install-hermes` writes a physical executable under that profile because Hermes intentionally rejects cron scripts that resolve outside its own `scripts` directory.
 
-The generated gate pins its config, state-home, and actual package import paths,
-so it does not depend on an ambient `PYTHONPATH` in either a checkout or an
-installed package. If the config, state-home, or package installation path
-changes, rerun `install-hermes` and update the cron prompt before resuming the
-job; this avoids a gate/ack split across two databases or a stale import path.
+The generated gate pins its compatible Python interpreter, config, state-home,
+and actual package import paths, so it does not depend on ambient `PATH` or
+`PYTHONPATH` values in either a checkout or an installed package. If the Python
+interpreter, config, state-home, or package installation path changes, rerun
+`install-hermes` and update the cron prompt before resuming the job; this avoids
+selecting an older system Python, splitting gate/ack across two databases, or
+using a stale import path.
 
 The project-local Codex policy in [`.codex/config.toml`](.codex/config.toml) forces unattended turns into workspace-write mode, adds only the SolBeat state directory as an extra writable root, disables network access, and never waits for an interactive approval. The cron prompt in [`config/cron-prompt.md`](config/cron-prompt.md) keeps event data separate from instructions and requires an explicit ack or release.
 

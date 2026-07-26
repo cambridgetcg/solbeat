@@ -9,6 +9,7 @@ from contextlib import closing
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 from solbeat.config import Policy, Settings
 from solbeat.security import redact_text, redact_value
@@ -42,6 +43,20 @@ class EventStoreTest(unittest.TestCase):
         )
         self.store = EventStore(self.settings)
         self.store.initialize()
+
+    def test_connect_closes_connection_when_setup_fails(self) -> None:
+        connection = mock.MagicMock()
+        with (
+            mock.patch("solbeat.store.sqlite3.connect", return_value=connection),
+            mock.patch.object(
+                self.store,
+                "_secure_files",
+                side_effect=PermissionError("synthetic setup failure"),
+            ),
+            self.assertRaisesRegex(PermissionError, "synthetic setup failure"),
+        ):
+            self.store.connect()
+        connection.close.assert_called_once_with()
 
     def _emit(self, *, now: int, priority: int = 50, dedupe: str = "one") -> str:
         event_id, inserted = self.store.emit(
