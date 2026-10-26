@@ -1,5 +1,6 @@
 # This repository is the only writable project root for unattended turns.
-approval_policy = "never"
+# Approval policy is left to whoever runs Codex here; the unattended runner
+# sets it in its own Codex profile.
 sandbox_mode = "workspace-write"
 allow_login_shell = false
 model_reasoning_effort = "medium"
