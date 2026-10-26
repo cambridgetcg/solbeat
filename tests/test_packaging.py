@@ -22,6 +22,16 @@ class PackagingTest(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
 
+    def test_shipped_codex_config_leaves_approval_to_the_runner(self) -> None:
+        with (REPO_ROOT / ".codex" / "config.toml").open("rb") as handle:
+            config = tomllib.load(handle)
+        self.assertNotIn("approval_policy", config)
+        self.assertEqual(config["sandbox_mode"], "workspace-write")
+        self.assertIs(config["sandbox_workspace_write"]["network_access"], False)
+        self.assertEqual(config["web_search"], "disabled")
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertNotIn("never waits for an interactive approval", readme)
+
     def test_default_toml_is_declared_as_package_data(self) -> None:
         with (REPO_ROOT / "pyproject.toml").open("rb") as handle:
             project = tomllib.load(handle)

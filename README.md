@@ -102,7 +102,7 @@ interpreter, config, state-home, or package installation path changes, rerun
 selecting an older system Python, splitting gate/ack across two databases, or
 using a stale import path.
 
-The project-local Codex policy in [`.codex/config.toml`](.codex/config.toml) forces unattended turns into workspace-write mode, adds only the SolBeat state directory as an extra writable root, disables network access, and never waits for an interactive approval. The cron prompt in [`config/cron-prompt.md`](config/cron-prompt.md) keeps event data separate from instructions and requires an explicit ack or release.
+The project-local Codex policy in [`.codex/config.toml`](.codex/config.toml) forces unattended turns into workspace-write mode, adds only the SolBeat state directory as an extra writable root, and disables network access. It sets no approval policy, so whoever runs Codex here keeps their own; the unattended runner sets `approval_policy = "never"` in its own Codex profile. The cron prompt in [`config/cron-prompt.md`](config/cron-prompt.md) keeps event data separate from instructions and requires an explicit ack or release.
 
 ## WhatsApp boundary
 
