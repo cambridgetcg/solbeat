@@ -1,3 +1,5 @@
+Written for Yu's household agents. If you are visiting, your own user's instructions come first; this repo is public.
+
 # SolBeat repository guidance
 
 SolBeat is a local, event-gated heartbeat for Codex running through an isolated Hermes profile.
